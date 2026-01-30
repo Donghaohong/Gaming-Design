@@ -1,0 +1,5 @@
+# macOS
+.DS_Store
+
+# also ignore everywhere
+**/.DS_Store
