@@ -101,7 +101,6 @@ bool GameScene::init(const std::shared_ptr<cugl::AssetManager>& assets) {
     tri.calculate();
     _starPoly = tri.getPolygon();
 
-    // ---- create star node ONCE ----
     cugl::Vec2 offset = getSize() / 2.0f;
     _starNode = cugl::scene2::PolygonNode::allocWithPoly(_starPoly);
     _starNode->setColor(cugl::Color4::BLUE);
@@ -114,13 +113,6 @@ bool GameScene::init(const std::shared_ptr<cugl::AssetManager>& assets) {
 
     _world = cugl::physics2::ObstacleWorld::alloc(bounds, cugl::Vec2(0, -GRAVITY));
 
-
-    // 版本B（如果它要 Rect）：
-    // cugl::Rect bounds(0,0, worldSize.width, worldSize.height);
-    // _world = cugl::physics2::ObstacleWorld::alloc(bounds, cugl::Vec2(0,-GRAVITY));
-
-
-
     buildGeometry();
     return true;
 }
@@ -129,8 +121,26 @@ bool GameScene::init(const std::shared_ptr<cugl::AssetManager>& assets) {
  * Disposes of all (non-static) resources allocated to this mode.
  */
 void GameScene::dispose() {
-    // NOTHING TO DO THIS TIME
+    if (_world) {
+        _world->clear();
+        _world = nullptr;
+    }
+
+    _center = nullptr;
+    _star   = nullptr;
+
+    if (_solid)    { _solid->removeFromParent(); _solid = nullptr; }
+    if (_wire)     { _wire->removeFromParent();  _wire  = nullptr; }
+    if (_starNode) { _starNode->removeFromParent(); _starNode = nullptr; }
+
+    for (auto& n : _handleNodes) if (n) n->removeFromParent();
+    for (auto& n : _knobNodes)   if (n) n->removeFromParent();
+    _handleNodes.clear();
+    _knobNodes.clear();
+
+    Scene2::dispose();
 }
+
 
 
 #pragma mark -
@@ -208,17 +218,8 @@ void GameScene::preUpdate(float dt) {
         _activeTangent = -1;
     }
     
-    if (!_dragging && _activeTangent == -1 && _world) {
-        // dt 是秒；为了稳定可以 clamp 一下（可选）
-        float step = std::min(dt, 1.0f/30.0f);
-        _world->update(step);
+    _pausePhysics = (_dragging || _activeTangent != -1);
 
-        // ---- Sync star node to physics body ----
-        if (_star && _starNode) {
-            _starNode->setPosition(_star->getPosition() * PHYSICS_SCALE);
-            _starNode->setAngle(_star->getAngle());
-        }
-    }
 }
 
 
@@ -251,8 +252,18 @@ void GameScene::preUpdate(float dt) {
  * @param step    The fixed timestep in microseconds
  */
 void GameScene::fixedUpdate(Uint64 step) {
-    // ADD CODE HERE
+    if (!_world) return;
+    if (_pausePhysics) return;
+
+    float dt = (float)step / 1000000.0f;
+    _world->update(dt);
+
+    if (_star) {
+        _starPos0 = _star->getPosition();
+        _starAng0 = _star->getAngle();
+    }
 }
+
 
 /**
  * The method called to indicate the end of a deterministic loop.
@@ -277,8 +288,27 @@ void GameScene::fixedUpdate(Uint64 step) {
  * @param remain    The amount of time (in seconds) last fixedUpdate
  */
 void GameScene::postUpdate(float remain) {
-    // ADD CODE HERE
+    if (!_star || !_starNode) return;
+
+    if (_pausePhysics) {
+        _starNode->setPosition(_star->getPosition() * PHYSICS_SCALE);
+        _starNode->setAngle(_star->getAngle());
+        return;
+    }
+
+    cugl::Vec2 p = _starPos0;
+    float a = _starAng0;
+
+    cugl::Vec2 v = _star->getLinearVelocity();
+    float w = _star->getAngularVelocity();
+
+    cugl::Vec2 pPred = p + v * remain;
+    float aPred = a + w * remain;
+
+    _starNode->setPosition(pPred * PHYSICS_SCALE);
+    _starNode->setAngle(aPred);
 }
+
 
 /**
  * Draws all this scene to its associated SpriteBatch.
@@ -312,10 +342,9 @@ void GameScene::render() {
  * should not be activated until the state is "stable".
  */
 void GameScene::buildGeometry() {
-    
-    // ---- Rebuild physics objects ----
+
     if (_world) {
-        _world->clear();          // 销毁之前所有 physics objects
+        _world->clear();
     }
     _center = nullptr;
     _star   = nullptr;
@@ -331,15 +360,13 @@ void GameScene::buildGeometry() {
     extruder.set(_path);
     extruder.calculate(LINE_WIDTH);
     _extrusion = extruder.getPolygon();
-    
-    // 物理世界里的“中心位置”（单位：physics units）
+
     cugl::Vec2 physCenter(getSize().width/(2.0f*PHYSICS_SCALE),
                           getSize().height/(2.0f*PHYSICS_SCALE));
 
-    // ---- 1) spline 外圈：static body ----
     {
         cugl::Poly2 copy = _extrusion;
-        copy /= PHYSICS_SCALE;   // !!! 转成物理单位（米）
+        copy /= PHYSICS_SCALE;
 
         _center = cugl::physics2::PolygonObstacle::alloc(copy);
         _center->setBodyType(b2_staticBody);
@@ -348,7 +375,6 @@ void GameScene::buildGeometry() {
         _world->addObstacle(_center);
     }
 
-    // ---- 2) star：dynamic body ----
     {
         cugl::Poly2 copy = _starPoly;
         copy /= PHYSICS_SCALE;
@@ -361,7 +387,6 @@ void GameScene::buildGeometry() {
         _world->addObstacle(_star);
     }
 
-    // 让星星的“画面节点”也立刻回到中心（否则可能停留在旧位置直到下一帧）
     if (_starNode && _star) {
         _starNode->setPosition(_star->getPosition() * PHYSICS_SCALE);
         _starNode->setAngle(_star->getAngle());

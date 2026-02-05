@@ -61,6 +61,12 @@ protected:
     
     std::vector<std::shared_ptr<cugl::scene2::PolygonNode>> _handleNodes;
     std::vector<std::shared_ptr<cugl::scene2::PolygonNode>> _knobNodes;
+
+    bool _pausePhysics = false;
+
+    cugl::Vec2 _starPos0 = cugl::Vec2::ZERO;
+    float _starAng0 = 0.0f;
+
     
     cugl::Poly2 _starPoly;
     
