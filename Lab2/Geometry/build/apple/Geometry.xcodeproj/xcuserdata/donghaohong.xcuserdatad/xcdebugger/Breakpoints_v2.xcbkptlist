@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Bucket
+   uuid = "B8B7BE1E-21C9-48B2-97B7-2F89FD7CAF29"
+   type = "1"
+   version = "2.0">
+   <Breakpoints>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "7B2684C8-71D8-4923-B48C-57B6E6DCCD3A"
+            shouldBeEnabled = "No"
+            condition = "_closed &amp;&amp; index &gt;= _size"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "../../../cugl/source/core/math/CUSpline2.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "424"
+            endingLineNumber = "424"
+            landmarkName = "Spline2::getAnchor(index)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+   </Breakpoints>
+</Bucket>
