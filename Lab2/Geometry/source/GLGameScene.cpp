@@ -40,6 +40,8 @@ using namespace std;
 /** The ratio between the physics world and the screen. */
 #define PHYSICS_SCALE 50
 
+#define GRAVITY  9.8f
+
 /** The initial control points for the spline. */
 float CIRCLE[] = {    0,  200,  120,  200,
         200,  120,  200,    0,  200, -120,
@@ -106,6 +108,17 @@ bool GameScene::init(const std::shared_ptr<cugl::AssetManager>& assets) {
     _starNode->setAnchor(cugl::Vec2::ANCHOR_CENTER);
     _starNode->setPosition(offset);
     addChild(_starNode);
+    
+    cugl::Size sz = getSize();
+    cugl::Rect bounds(0, 0, sz.width/PHYSICS_SCALE, sz.height/PHYSICS_SCALE);
+
+    _world = cugl::physics2::ObstacleWorld::alloc(bounds, cugl::Vec2(0, -GRAVITY));
+
+
+    // 版本B（如果它要 Rect）：
+    // cugl::Rect bounds(0,0, worldSize.width, worldSize.height);
+    // _world = cugl::physics2::ObstacleWorld::alloc(bounds, cugl::Vec2(0,-GRAVITY));
+
 
 
     buildGeometry();
@@ -193,6 +206,18 @@ void GameScene::preUpdate(float dt) {
     if (_input.didRelease()) {
         _dragging = false;
         _activeTangent = -1;
+    }
+    
+    if (!_dragging && _activeTangent == -1 && _world) {
+        // dt 是秒；为了稳定可以 clamp 一下（可选）
+        float step = std::min(dt, 1.0f/30.0f);
+        _world->update(step);
+
+        // ---- Sync star node to physics body ----
+        if (_star && _starNode) {
+            _starNode->setPosition(_star->getPosition() * PHYSICS_SCALE);
+            _starNode->setAngle(_star->getAngle());
+        }
     }
 }
 
@@ -287,6 +312,14 @@ void GameScene::render() {
  * should not be activated until the state is "stable".
  */
 void GameScene::buildGeometry() {
+    
+    // ---- Rebuild physics objects ----
+    if (_world) {
+        _world->clear();          // 销毁之前所有 physics objects
+    }
+    _center = nullptr;
+    _star   = nullptr;
+
     cugl::Vec2 offset = getSize() / 2.0f;
 
     cugl::SplinePather pather;
@@ -298,6 +331,42 @@ void GameScene::buildGeometry() {
     extruder.set(_path);
     extruder.calculate(LINE_WIDTH);
     _extrusion = extruder.getPolygon();
+    
+    // 物理世界里的“中心位置”（单位：physics units）
+    cugl::Vec2 physCenter(getSize().width/(2.0f*PHYSICS_SCALE),
+                          getSize().height/(2.0f*PHYSICS_SCALE));
+
+    // ---- 1) spline 外圈：static body ----
+    {
+        cugl::Poly2 copy = _extrusion;
+        copy /= PHYSICS_SCALE;   // !!! 转成物理单位（米）
+
+        _center = cugl::physics2::PolygonObstacle::alloc(copy);
+        _center->setBodyType(b2_staticBody);
+        _center->setPosition(physCenter);
+
+        _world->addObstacle(_center);
+    }
+
+    // ---- 2) star：dynamic body ----
+    {
+        cugl::Poly2 copy = _starPoly;
+        copy /= PHYSICS_SCALE;
+
+        _star   = cugl::physics2::PolygonObstacle::alloc(copy);
+        _star->setBodyType(b2_dynamicBody);
+        _star->setDensity(1.0f);
+        _star->setPosition(physCenter);
+
+        _world->addObstacle(_star);
+    }
+
+    // 让星星的“画面节点”也立刻回到中心（否则可能停留在旧位置直到下一帧）
+    if (_starNode && _star) {
+        _starNode->setPosition(_star->getPosition() * PHYSICS_SCALE);
+        _starNode->setAngle(_star->getAngle());
+    }
+
 
     if (_solid == nullptr) {
         _solid = cugl::scene2::PolygonNode::allocWithPoly(_extrusion);
